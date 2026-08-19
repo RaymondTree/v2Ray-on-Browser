@@ -1,14 +1,41 @@
 // v2Ray-on-Browser - 主线程
 const PRESETS = [
   {
-    name: "优选节点-295368264（预设）",
-    address: "join.my.telegram.channel.cmliussss.to.unlock.more.premium.nodes.cf.090227.xyz",
+    name: "SG:443 WS=/ SNI=raymondtree.ccwu.cc",
+    address: "178.128.20.158",
     port: 443,
     uuid: "295db427-d187-415b-889b-8951e34d571c",
     wsPath: "/",
     sni: "raymondtree.ccwu.cc"
   },
 ];
+
+// 解析 vless://uuid@host:port?params 链接，返回 VlessConfig 或 null
+function parseVless(link){
+  try{
+    link=link.trim();
+    if(!link.toLowerCase().startsWith('vless://')) return null;
+    // 处理 vless 链接中以 &amp; 编码的情况
+    link=link.replace(/&amp;/g,'&');
+    const u=new URL(link);
+    const uuid=decodeURIComponent(u.username || u.pathname.replace(/^\/\//,'').split('@')[0] || '');
+    // URL 解析对 vless 不完全兼容，手动回退解析
+    let hostPort = u.host;
+    let uuid2=uuid;
+    if(!hostPort || !uuid2){
+      const m=link.match(/^vless:\/\/([^@]+)@([^:/?#]+):(\d+)/i);
+      if(m){ uuid2=m[1]; hostPort=m[2]+':'+m[3]; }
+    }
+    const address = u.hostname || hostPort.split(':')[0] || '';
+    const port = parseInt(u.port || hostPort.split(':')[1] || '443',10);
+    const wsPath = u.searchParams.get('path') || '/';
+    const sni = u.searchParams.get('sni') || u.searchParams.get('peer') || u.searchParams.get('host') || address;
+    // uuid 可能含在 username
+    const finalUuid = uuid2 || u.username;
+    if(!finalUuid || !address) return null;
+    return { address, port, uuid: finalUuid, wsPath: decodeURIComponent(wsPath), sni };
+  }catch{ return null; }
+}
 
 const LS_KEY = "v2ray-custom-nodes";
 
@@ -234,8 +261,18 @@ els.presetSelect.addEventListener('change', ()=>{ if(getMode()==='preset') { con
 ['input','change'].forEach(ev=>{
   [els.address, els.port, els.uuid, els.wsPath, els.sni].forEach(el=> el.addEventListener(ev, saveCustom));
 });
+function normalizeConfig(cfg){
+  // 若 address 栏误粘贴整条 vless 链接，自动解析
+  if(cfg.address && cfg.address.toLowerCase().startsWith('vless://')){
+    const p=parseVless(cfg.address);
+    if(p){ pushLog('info','检测到 vless 链接，已自动解析为地址/端口/UUID/WS路径/SNI'); return p; }
+  }
+  return cfg;
+}
 els.btnConnect.addEventListener('click', ()=>{
-  const cfg = getMode()==='preset' ? PRESETS[parseInt(els.presetSelect.value,10)] : getFormConfig();
+  let cfg = getMode()==='preset' ? PRESETS[parseInt(els.presetSelect.value,10)] : getFormConfig();
+  cfg = normalizeConfig(cfg);
+  if(getMode()!=='preset' && cfg.address!==getFormConfig().address) setFormConfig(cfg);
   const err=validate(cfg);
   if(err){ pushLog('error', err); setStatus('failed', err); return; }
   setStatus('connecting');
