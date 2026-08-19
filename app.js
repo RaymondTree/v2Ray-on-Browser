@@ -1,8 +1,13 @@
 // v2Ray-on-Browser - 主线程
 const PRESETS = [
-  // TODO: 替换为用户提供的真实预设节点。当前为演示占位，需自行替换。
-  { name: "预设节点 1（示例）", address: "preset1.example.com", port: 443, uuid: "11111111-1111-4111-8111-111111111111", wsPath: "/", sni: "preset1.example.com" },
-  { name: "预设节点 2（示例）", address: "preset2.example.com", port: 2053, uuid: "22222222-2222-4222-8222-222222222222", wsPath: "/ray", sni: "preset2.example.com" },
+  {
+    name: "优选节点-295368264（预设）",
+    address: "join.my.telegram.channel.cmliussss.to.unlock.more.premium.nodes.cf.090227.xyz",
+    port: 443,
+    uuid: "295db427-d187-415b-889b-8951e34d571c",
+    wsPath: "/",
+    sni: "raymondtree.ccwu.cc"
+  },
 ];
 
 const LS_KEY = "v2ray-custom-nodes";
