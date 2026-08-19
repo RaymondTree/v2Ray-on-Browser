@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>v2Ray on Browser - VLESS 浏览器代理</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◈</span>
+      <h1>v2Ray on Browser</h1>
+      <span class="subtitle">VLESS + WebSocket + TLS · 纯浏览器 · Cloudflare Pages</span>
+    </div>
+    <div class="mode-switch">
+      <label class="radio">
+        <input type="radio" name="nodeMode" value="custom" checked />
+        <span>自定义节点</span>
+      </label>
+      <label class="radio">
+        <input type="radio" name="nodeMode" value="preset" />
+        <span>内置预设</span>
+      </label>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- 左栏 -->
+    <section class="panel left">
+      <div class="card">
+        <div class="card-head">
+          <h2>节点配置</h2>
+          <span id="statusBadge" class="badge idle">未连接</span>
+        </div>
+
+        <!-- 预设选择器，仅预设模式显示 -->
+        <div id="presetWrap" class="field hidden">
+          <label>内置预设节点</label>
+          <select id="presetSelect"></select>
+          <p class="hint">预设节点写死于代码，不可修改。真实节点请提供后替换 <code>app.js:PRESETS</code>。</p>
+        </div>
+
+        <div id="customFields">
+          <div class="field">
+            <label>服务地址 (Address)</label>
+            <input id="inpAddress" type="text" placeholder="example.com" />
+          </div>
+          <div class="field row2">
+            <div>
+              <label>端口 (Port)</label>
+              <input id="inpPort" type="number" min="1" max="65535" placeholder="443" value="443" />
+            </div>
+            <div>
+              <label>TLS SNI</label>
+              <input id="inpSni" type="text" placeholder="默认与地址相同" />
+            </div>
+          </div>
+          <div class="field">
+            <label>UUID</label>
+            <input id="inpUuid" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+          </div>
+          <div class="field">
+            <label>WebSocket 路径</label>
+            <input id="inpWsPath" type="text" placeholder="/" value="/" />
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="btnConnect" class="btn primary">连接</button>
+          <button id="btnDisconnect" class="btn" disabled>断开</button>
+          <button id="btnClearStorage" class="btn ghost" title="清除本地保存的自定义节点">清除保存</button>
+        </div>
+        <p class="hint">仅支持 VLESS+WebSocket+TLS。自定义配置自动保存至 localStorage。</p>
+        <div id="wasmStatus" class="hint">WASM: 初始化中…</div>
+      </div>
+
+      <div class="card">
+        <h2>代理浏览</h2>
+        <div class="browser-bar">
+          <button id="btnBack" class="btn small" title="后退">◀</button>
+          <button id="btnForward" class="btn small" title="前进">▶</button>
+          <button id="btnRefresh" class="btn small" title="刷新">↻</button>
+          <input id="inpUrl" type="url" placeholder="https://example.com" value="https://example.com" />
+          <button id="btnGo" class="btn primary small">前往</button>
+        </div>
+        <p class="hint">容器内页面通过本地隧道 fetch 获取后以 Blob 载入 iframe。子资源受同源限制，部分站点可能无法完整渲染；日志可验证流量走向。</p>
+      </div>
+    </section>
+
+    <!-- 右栏 -->
+    <section class="panel right">
+      <div class="card browser-card">
+        <div class="browser-meta">
+          <span id="browserStatus">就绪</span>
+          <span id="trafficStat">↑ 0 B · ↓ 0 B</span>
+        </div>
+        <iframe id="browserView" title="代理浏览容器" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+      </div>
+    </section>
+  </main>
+
+  <section class="log-section card">
+    <div class="log-head">
+      <h2>日志面板</h2>
+      <div class="log-actions">
+        <select id="logFilter">
+          <option value="all">全部</option>
+          <option value="info">信息</option>
+          <option value="warn">警告</option>
+          <option value="error">错误</option>
+        </select>
+        <button id="btnClearLog" class="btn small">清空</button>
+        <button id="btnExportLog" class="btn small">导出</button>
+      </div>
+    </div>
+    <div id="logPanel" class="log-body"></div>
+    <div class="log-stats">
+      <span>流量统计：<b id="statUp">0 B</b> 上行 / <b id="statDown">0 B</b> 下行</span>
+      <span>请求数：<b id="statReq">0</b></span>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <span>静态部署于 Cloudflare Pages · 零后端 · WASM 单线程</span>
+    <a href="deploy-cf-pages.md" target="_blank">部署说明</a>
+  </footer>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>
