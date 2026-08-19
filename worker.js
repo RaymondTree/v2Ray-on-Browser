@@ -89,20 +89,41 @@ async function handleProxyFetch(id, url){
     postMessage({type:'PROXY_RESPONSE', id, error:'未连接'});
     return;
   }
+  const fetchDirect = async (target)=>{
+    const resp = await fetch(target, {headers:{'X-Proxied-By':'v2ray-on-browser'}});
+    const buf = await resp.arrayBuffer();
+    return {resp, buf};
+  };
   try{
     log('info',`代理请求: ${url}`);
     const start=Date.now();
-    // 真实实现应经 WASM 隧道发起；此处为演示：直接 fetch，并在日志中标注
-    // 若站点禁止跨域，则捕获错误并回传
-    const resp = await fetch(url, {headers:{'X-Proxied-By':'v2ray-on-browser'}});
-    const buf = await resp.arrayBuffer();
+    let resp, buf, headers={};
+    let usedProxy=false;
+    try{
+      const r = await fetchDirect(url);
+      resp=r.resp; buf=r.buf;
+      r.resp.headers.forEach((v,k)=> headers[k]=v);
+    }catch(e){
+      // 直接 fetch 失败多为 CORS 阻断，尝试 CORS 代理回退（仅演示用途；真实隧道不受 CORS 限制）
+      log('warn',`直连失败 ${e.message}，尝试 CORS 代理回退…`);
+      const proxyUrl='https://api.allorigins.win/raw?url='+encodeURIComponent(url);
+      try{
+        const r2 = await fetchDirect(proxyUrl);
+        resp=r2.resp; buf=r2.buf;
+        headers={'content-type': r2.resp.headers.get('content-type')||'text/html'};
+        usedProxy=true;
+        log('info','已通过 api.allorigins.win 代理获取（演示回退）');
+      }catch(e2){
+        throw new Error(e.message+'；代理回退也失败: '+e2.message+'。说明：Mock 模式下浏览器直连受 CORS 限制，真实 xray-js 隧道建立后将不受此限。建议先测试 https://example.com 或 https://httpbin.org/html 等允许 CORS 的站点。');
+      }
+    }
     bytesDown+=buf.byteLength;
-    bytesUp+= url.length; // 粗略
+    bytesUp+= url.length;
     pushStats();
-    const headers={};
-    resp.headers.forEach((v,k)=> headers[k]=v);
-    log('info',`响应 ${resp.status} ${url} 耗时 ${Date.now()-start}ms ${buf.byteLength}B`);
-    postMessage({type:'PROXY_RESPONSE', id, status:resp.status, headers, body: buf}, [buf]);
+    const status = resp.status;
+    const info = usedProxy?` (经代理)`:'';
+    log('info',`响应 ${status}${info} ${url} 耗时 ${Date.now()-start}ms ${buf.byteLength}B`);
+    postMessage({type:'PROXY_RESPONSE', id, status, headers, body: buf}, [buf]);
   }catch(e){
     log('error',`代理失败 ${url}: ${e.message}`);
     postMessage({type:'PROXY_RESPONSE', id, error: e.message});
