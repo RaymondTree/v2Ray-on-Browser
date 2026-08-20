@@ -220,17 +220,31 @@ function handleProxyResponse(m){
   // update stats from worker already via STATS, but also count here
   if(m.body) bytesDown+=m.body.byteLength;
   els.browserStatus.textContent=`${m.status} · ${url}`;
-  // Render: if html -> create blob with base tag injection
   let blob;
   const ct=(m.headers['content-type']||'').toLowerCase();
   if(ct.includes('text/html')){
     let text=new TextDecoder().decode(m.body);
-    // inject base href
     try{
       const u=new URL(url);
-      const base=`<base href="${u.origin}/">`;
-      if(text.includes('<head>')) text=text.replace('<head>', `<head>${base}`);
-      else text=base+text;
+      const base=`<base href="${u.origin}/" target="_self">`;
+      const interceptScript=`<script>
+(function(){
+  document.addEventListener('click', function(e){
+    const a=e.target.closest('a');
+    if(!a||!a.href) return;
+    if(a.target==='_blank') a.removeAttribute('target');
+    if(a.href.startsWith('http')){
+      e.preventDefault();
+      parent.postMessage({type:'iframe-navigate', url:a.href}, '*');
+    }
+  }, true);
+  const _open=window.open;
+  window.open=function(u){ if(u) parent.postMessage({type:'iframe-navigate', url:u}, '*'); return null; };
+})();
+</scr`+`ipt>`;
+      if(text.includes('<head>')) text=text.replace('<head>', `<head>${base}${interceptScript}`);
+      else text=base+interceptScript+text;
+      text=text.replace(/target\s*=\s*["_']_blank["_']/gi, 'target="_self"');
     }catch{}
     blob=new Blob([text], {type:'text/html'});
   } else {
@@ -241,6 +255,8 @@ function handleProxyResponse(m){
   lastBlobUrl=URL.createObjectURL(blob);
   els.browserView.src=lastBlobUrl;
 }
+
+window.addEventListener('message', e=>{ if(e.data && e.data.type==='iframe-navigate' && e.data.url){ let u=e.data.url; try{ if(!/^https?:\/\//i.test(u)) u=new URL(u, els.inpUrl.value).href; }catch{} pushLog('info','iframe 内导航: '+u); navigate(u); } });
 
 function navigate(url, pushHistory=true){
   // normalize
