@@ -58,15 +58,25 @@ async function initWasm(){
 async function connectTunnel(cfg){
   setStatus('connecting'); log('info',`Worker 收到连接请求 ${cfg.address}:${cfg.port}`);
   if(!wasmReady){setStatus('failed','WASM 未就绪');return;}
-  // 若 Go 已就绪，可在此调用 Go 暴露的连接函数（若有）
+  // 优先尝试 Go 暴露的真实连接
+  if(typeof self.xrayConnect === 'function' || typeof globalThis.xrayConnect === 'function'){
+    try{
+      const fn = self.xrayConnect || globalThis.xrayConnect;
+      log('info','调用 Go 真隧道 xrayConnect…');
+      await fn(cfg);
+      currentConfig=cfg; setStatus('connected');
+      log('info','Go 真隧道已建立');
+      return;
+    }catch(e){ log('warn','Go 真隧道连接失败，回退 Mock: '+e.message); }
+  }
   if(goInstance && wasmInstance && wasmInstance.exports && wasmInstance.exports._xray_run){
     try{ log('info','调用 Go 导出 _xray_run'); }catch{}
   }
   await new Promise(r=>setTimeout(r,500));
   if(cfg.address.includes('example.com')){ setStatus('failed','演示节点不可连通'); log('error','隧道失败'); return; }
   currentConfig=cfg; setStatus('connected');
-  if(goInstance) log('info','隧道已建立（Go 单线程 WASM）。已可尝试真实代理，若仍合成说明 Go 未接管 fetch，需按 WASM.md 接入 Go 暴露的 fetch 接口。');
-  else log('info','隧道已建立（Mock 单线程 WASM）。真实 xray.wasm 替换后将经 VLESS+WS+TLS 直连，不受 CORS 限制。');
+  if(goInstance) log('info','隧道已建立（Go 单线程 WASM - Mock 回退）。已可尝试代理，若仍合成说明 Go 未暴露 xrayFetch/xrayConnect，需按 WASM.md 补充。');
+  else log('info','隧道已建立（Mock 单线程 WASM）。');
 }
 function disconnectTunnel(){ currentConfig=null; setStatus('idle'); log('info','隧道已断开'); }
 
@@ -82,6 +92,25 @@ async function fetchDirect(url){
 async function handleProxyFetch(id, url){
   if(tunnelState!=='connected'){postMessage({type:'PROXY_RESPONSE',id,error:'未连接'});return;}
   log('info',`代理请求: ${url}`); const start=Date.now();
+  // 1. 优先尝试 Go 暴露的真实隧道（若 Go 编译时已暴露）
+  // Go 侧需：js.Global().Set("xrayFetch", js.FuncOf(...))  返回 {status, headers, body}
+  if(typeof self.xrayFetch === 'function' || typeof globalThis.xrayFetch === 'function'){
+    try{
+      const fn = self.xrayFetch || globalThis.xrayFetch;
+      log('info','尝试 Go 真隧道 xrayFetch…');
+      const res = await fn(url, currentConfig);
+      // 兼容返回格式：{status, headers, body: Uint8Array}
+      let body = res.body;
+      if(body instanceof Uint8Array) body = body.buffer.slice(body.byteOffset, body.byteOffset+body.byteLength);
+      headers = res.headers || {'content-type':'text/html; charset=utf-8'};
+      buf = body instanceof ArrayBuffer ? body : new TextEncoder().encode(String(body)).buffer;
+      resp = {status: res.status || 200, headers:{get:k=>headers[k.toLowerCase()]}}; resp.headers.forEach=(cb)=>Object.entries(headers).forEach(([k,v])=>cb(v,k));
+      bytesDown+=buf.byteLength; bytesUp+=url.length; pushStats();
+      log('info',`响应 ${resp.status} (Go 真隧道) ${url} ${Date.now()-start}ms ${buf.byteLength}B`);
+      postMessage({type:'PROXY_RESPONSE',id,status:resp.status,headers,body:buf},[buf]);
+      return;
+    }catch(e){ log('warn','Go 真隧道失败，回退 CORS: '+e.message); }
+  }
   let resp,buf,headers={},via='';
   try{ const r=await fetchDirect(url); resp=r.resp; buf=r.buf; r.resp.headers.forEach((v,k)=>headers[k]=v); }
   catch(e1){
